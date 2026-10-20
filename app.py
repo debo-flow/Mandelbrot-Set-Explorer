@@ -70,7 +70,7 @@ def main():
     width = st.sidebar.number_input("Image Width (px)", value=800, min_value=100, max_value=2000, step=100)
     height = st.sidebar.number_input("Image Height (px)", value=800, min_value=100, max_value=2000, step=100)
     max_iter = st.sidebar.slider("Max Iterations", 10, 2000, 100, 10)
-    cmap = st.sidebar.selectbox("Color Map", ["magma", "inferno", "plasma", "viridis", "twilight"])
+    cmap = st.sidebar.selectbox("Color Map", ["magma", "inferno", "plasma", "viridis", "cividis", "twilight"])
 
     # Enforce aspect ratio BEFORE rendering
     raw_vp = st.session_state.history.current
