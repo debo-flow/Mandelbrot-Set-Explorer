@@ -65,3 +65,9 @@ def test_invalid_inputs():
         
     with pytest.raises(ValueError): # Invalid iterations
         compute_mandelbrot(max_iter=0)
+        
+    with pytest.raises(ValueError): # NaN bounds (Milestone 2)
+        compute_mandelbrot(re_min=float('nan'))
+        
+    with pytest.raises(ValueError): # Inf bounds (Milestone 2)
+        compute_mandelbrot(re_max=float('inf'))
