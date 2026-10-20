@@ -32,5 +32,23 @@ The term $\ln(\vert{}z_n\vert{})$ is strictly positive and mathematically safe b
 ## Logarithmic Visibility Mode
 In regions of extreme chaos, linear smooth escape times can span vast numerical ranges too quickly for a standard linear colormap. The Logarithmic mode safely applies $\ln(1 + \mu)$ to compress output dynamics, visually surfacing deep structural details near the boundary.
 
+## High-Resolution Supersampling & Anti-Aliasing
+
+### Limits of Grid Resolution
+Evaluating the Mandelbrot Set requires sampling mathematical points along a discrete grid. At borders where chaotic escape dynamics manifest, the contrast between Escaped and Unresolved pixels is incredibly sharp, frequently resulting in stark visual aliasing (pixelated, "jagged" boundaries).
+
+### Mathematical Supersampling
+Ordinary "Image interpolation" (like enlarging a small photo) cannot recover missing mathematical boundary data. To achieve true scientific anti-aliasing, the numerical engine must query the complex plane at a tighter fractal density. 
+
+A **Supersampling Factor ($S$)** calculates the underlying grid natively at $W_{int} = W_{out} \times S$ and $H_{int} = H_{out} \times S$. The resultant memory footprint grows quadratically. A 4x Supersampling routine calculates 16-times the mathematical density before condensing the representation.
+
+### Downsampling Filters
+After computing high-density RGB space mapping, the visual output is mathematically downsampled to the target output dimension. The application utilizes Pillow to expose different mathematical kernels:
+* **LANCZOS:** High-quality `sinc` filter. Ideal for producing the sharpest details from extreme fractals.
+* **BICUBIC:** Cubic spline interpolation. Smooth, generally faster than Lanczos but slightly softer.
+* **BILINEAR / BOX:** Standard hardware-esque filtering.
+
+These visual filters do *not* prove additional sub-pixel membership structures beyond the computed fractal. They aggregate localized chaotic density to produce mathematically robust pixel probabilities, effectively destroying aliased ridges.
+
 ## Floating-Point Precision Limitations
-This CPU implementation uses standard 64-bit IEEE-754 floats (`float64`). At extreme magnifications (deep zooms beyond $\approx 10^{-13}$), floating-point precision fails, leading to blocky "pixelation". Resolving this requires arbitrary-precision arithmetic, which is outside the scope of v3.0.0.
+This CPU implementation uses standard 64-bit IEEE-754 floats (`float64`). At extreme magnifications (deep zooms beyond $\approx 10^{-13}$), floating-point precision fails, leading to blocky "pixelation". Resolving this requires arbitrary-precision arithmetic.
