@@ -7,6 +7,9 @@ import math
 import numpy as np
 from typing import Tuple
 
+# Memory Safeguard: Prevent arrays larger than ~64 million pixels (~1GB footprint total)
+MAX_SAFE_PIXELS = 64_000_000
+
 def compute_mandelbrot(
     re_min: float = -2.5,
     re_max: float = 1.0,
@@ -23,8 +26,8 @@ def compute_mandelbrot(
     Args:
         re_min, re_max: Boundaries of the real axis.
         im_min, im_max: Boundaries of the imaginary axis.
-        width: Pixel width of the output image.
-        height: Pixel height of the output image.
+        width: Pixel width of the output internal image grid.
+        height: Pixel height of the output internal image grid.
         max_iter: Maximum iterations before classifying as unresolved.
         escape_radius: Radius threshold for escape (must be >= 2.0 for standard algorithms).
 
@@ -50,6 +53,10 @@ def compute_mandelbrot(
         raise ValueError("max_iter must be a positive integer")
     if escape_radius < 2.0:
         raise ValueError("escape_radius must be >= 2.0 for mathematical stability.")
+        
+    # Safeguard against out-of-memory errors on massive supersamples
+    if width * height > MAX_SAFE_PIXELS:
+        raise ValueError(f"Safety limit exceeded: Requesting {width * height:,} pixels. Max allowed is {MAX_SAFE_PIXELS:,}.")
 
     # 2. Coordinate Grid Generation
     x = np.linspace(re_min, re_max, width)
@@ -71,19 +78,14 @@ def compute_mandelbrot(
 
         z[active] = z[active]**2 + c_matrix[active]
 
-        # Detect active points that exceeded the escape radius
         escaped_now = np.abs(z[active]) > escape_radius
         
         if np.any(escaped_now):
             escaped_full = np.zeros_like(active)
             escaped_full[active] = escaped_now
 
-            # Record standard integer iteration
             escape_times[escaped_full] = i + 1
 
-            # Record continuous/smooth coloring approximation:
-            # mu = n + 1 - log2(ln(|z|))
-            # Guaranteed safe since |z| > escape_radius >= 2.0, so ln(|z|) > ln(2) > 0.
             z_esc = np.abs(z[escaped_full])
             log_z = np.log(z_esc)
             smooth_escape_times[escaped_full] = (i + 1) - np.log2(log_z)
