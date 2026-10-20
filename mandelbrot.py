@@ -2,6 +2,7 @@
 Mandelbrot Computation Engine.
 Handles the mathematical generation of the Mandelbrot Set using an escape-time algorithm.
 """
+import math
 import numpy as np
 from typing import Tuple
 
@@ -33,6 +34,10 @@ def compute_mandelbrot(
         c_matrix (np.ndarray): 2D complex array of the coordinate grid.
     """
     # 1. Parameter Validation
+    for v in (re_min, re_max, im_min, im_max):
+        if math.isnan(v) or math.isinf(v):
+            raise ValueError("Coordinate boundaries must be finite numbers.")
+            
     if re_max <= re_min:
         raise ValueError("re_max must be strictly greater than re_min")
     if im_max <= im_min:
