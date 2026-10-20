@@ -1,5 +1,5 @@
 """
-Streamlit Application UI for the Mandelbrot Set Explorer v2.0.0.
+Streamlit Application UI for the Mandelbrot Set Explorer v3.0.0.
 """
 import time
 import streamlit as st
@@ -8,13 +8,11 @@ from mandelbrot import compute_mandelbrot
 from visualization import create_mandelbrot_figure, figure_to_png_buffer
 from navigation import Viewport, HistoryManager
 
-st.set_page_config(page_title="Mandelbrot Explorer v2.0", page_icon="🌌", layout="wide")
+st.set_page_config(page_title="Mandelbrot Explorer v3.0", page_icon="🌌", layout="wide")
 
-# Constants
 DEFAULT_VIEW = Viewport(-2.5, 1.0, -1.5, 1.5)
 INITIAL_WIDTH = DEFAULT_VIEW.width
 
-# Initialize Session State
 if 'history' not in st.session_state:
     st.session_state.history = HistoryManager()
     st.session_state.history.push(DEFAULT_VIEW)
@@ -23,12 +21,12 @@ if 'pan_step' not in st.session_state:
 if 'zoom_factor' not in st.session_state:
     st.session_state.zoom_factor = 2.0
 
+# Critical: Caching is restricted ONLY to the mathematical engine.
 @st.cache_data(show_spinner=False)
 def cached_compute(re_min, re_max, im_min, im_max, w, h, iters, radius):
     return compute_mandelbrot(re_min, re_max, im_min, im_max, w, h, iters, radius)
 
 def navigate(action: str, **kwargs):
-    """Handles view transformations and updates history."""
     current_vp = st.session_state.history.current
     try:
         if action == "zoom_in":
@@ -44,7 +42,6 @@ def navigate(action: str, **kwargs):
         elif action == "pan_right":
             new_vp = current_vp.pan(st.session_state.pan_step, 0)
         elif action == "custom":
-            # Jump to custom coordinate with defined width
             cx, cy, span = kwargs['cx'], kwargs['cy'], kwargs['span']
             new_vp = Viewport(cx - span/2, cx + span/2, cy - span/2, cy + span/2)
         elif action == "reset":
@@ -57,43 +54,60 @@ def navigate(action: str, **kwargs):
             return
         else:
             return
-            
         st.session_state.history.push(new_vp)
     except ValueError as e:
         st.error(f"Navigation Error: {e}")
 
 def main():
-    st.title("Interactive Complex Plane Navigation & Precision Zoom Laboratory")
+    st.title("Smooth Dynamics & Advanced Fractal Visualization Laboratory")
     
-    # 1. Sidebar Configuration
-    st.sidebar.header("Resolution & Computation")
-    width = st.sidebar.number_input("Image Width (px)", value=800, min_value=100, max_value=2000, step=100)
-    height = st.sidebar.number_input("Image Height (px)", value=800, min_value=100, max_value=2000, step=100)
-    max_iter = st.sidebar.slider("Max Iterations", 10, 2000, 100, 10)
-    cmap = st.sidebar.selectbox("Color Map", ["magma", "inferno", "plasma", "viridis", "cividis", "twilight"])
+    # Sidebar: Quality Presets
+    st.sidebar.header("1. Rendering Detail")
+    preset = st.sidebar.selectbox("Quality Preset", ["LOW", "MEDIUM", "HIGH", "CUSTOM"], index=1)
+    
+    presets_map = {
+        "LOW": (400, 400, 50),
+        "MEDIUM": (800, 800, 150),
+        "HIGH": (1200, 1200, 500)
+    }
+    
+    if preset != "CUSTOM":
+        w_def, h_def, iter_def = presets_map[preset]
+        disable_custom = True
+    else:
+        w_def, h_def, iter_def = 800, 800, 150
+        disable_custom = False
 
-    # Enforce aspect ratio BEFORE rendering
+    width = st.sidebar.number_input("Width (px)", value=w_def, disabled=disable_custom, step=100)
+    height = st.sidebar.number_input("Height (px)", value=h_def, disabled=disable_custom, step=100)
+    max_iter = st.sidebar.number_input("Max Iterations", value=iter_def, disabled=disable_custom, step=10)
+
+    # Sidebar: Visualization Settings
+    st.sidebar.header("2. Visualization Settings")
+    mode = st.sidebar.selectbox("Visualization Mode", ["Smooth", "Classic", "Binary", "Grayscale", "Logarithmic"])
+    
+    cmap_list = ["magma", "inferno", "plasma", "viridis", "turbo", "twilight", "hot", "cool", "hsv"]
+    cmap = st.sidebar.selectbox("Color Map", cmap_list, disabled=(mode in ["Binary", "Grayscale"]))
+    interior_color = st.sidebar.selectbox("Interior (Unresolved) Color", ["black", "white", "darkblue", "darkred"])
+
     raw_vp = st.session_state.history.current
     vp = raw_vp.enforce_aspect_ratio(width, height)
-    
-    # Mathematical computations for display
     cx, cy = vp.center
     zoom_level = INITIAL_WIDTH / vp.width
 
-    # 2. Main Area: Navigation Controls
+    # Main Area: Navigation Controls
     nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 2])
     
     with nav_col1:
         st.markdown("**Zoom Controls**")
         st.session_state.zoom_factor = st.number_input("Zoom Factor", value=2.0, min_value=1.1, step=0.5)
         cols = st.columns(2)
-        cols[0].button("🔍 Zoom In", on_click=navigate, args=("zoom_in",), use_container_width=True)
-        cols[1].button("🔎 Zoom Out", on_click=navigate, args=("zoom_out",), use_container_width=True)
+        cols[0].button("🔍 In", on_click=navigate, args=("zoom_in",), use_container_width=True)
+        cols[1].button("🔎 Out", on_click=navigate, args=("zoom_out",), use_container_width=True)
 
     with nav_col2:
         st.markdown("**Pan Controls**")
-        st.session_state.pan_step = st.number_input("Pan Step (%)", value=0.20, min_value=0.01, max_value=1.0, step=0.05)
-        # D-pad simulation
+        st.session_state.pan_step = st.number_input("Pan Step (%)", value=0.20, min_value=0.01, step=0.05)
         p_col1, p_col2, p_col3 = st.columns(3)
         p_col2.button("⬆️", on_click=navigate, args=("pan_up",), use_container_width=True)
         p_col1.button("⬅️", on_click=navigate, args=("pan_left",), use_container_width=True)
@@ -103,42 +117,49 @@ def main():
     with nav_col3:
         st.markdown("**History & Coordinates**")
         h_col1, h_col2, h_col3 = st.columns(3)
-        h_col1.button("↩️ Previous", on_click=navigate, args=("undo",), use_container_width=True)
+        h_col1.button("↩️ Prev", on_click=navigate, args=("undo",), use_container_width=True)
         h_col2.button("🔄 Reset", on_click=navigate, args=("reset",), use_container_width=True)
         h_col3.button("↪️ Next", on_click=navigate, args=("redo",), use_container_width=True)
         
         with st.expander("Go to Custom Coordinates"):
-            c_re = st.number_input("Real Center (Re)", value=float(cx), format="%.6f")
-            c_im = st.number_input("Imaginary Center (Im)", value=float(cy), format="%.6f")
-            c_span = st.number_input("Horizontal Span", value=float(vp.width), format="%.6f")
+            c_re = st.number_input("Real Center", value=float(cx), format="%.6f")
+            c_im = st.number_input("Imag Center", value=float(cy), format="%.6f")
+            c_span = st.number_input("Span", value=float(vp.width), format="%.6f")
             st.button("Go", on_click=navigate, args=("custom",), kwargs={"cx": c_re, "cy": c_im, "span": c_span})
 
-    # 3. Viewport Metadata Display
-    st.caption(f"**Current Center:** {cx:.6f} + {cy:.6f}i &nbsp;|&nbsp; **Zoom Level:** {zoom_level:,.2f}x &nbsp;|&nbsp; **Boundaries:** Re[{vp.re_min:.5f}, {vp.re_max:.5f}], Im[{vp.im_min:.5f}, {vp.im_max:.5f}]")
+    st.caption(f"**Center:** {cx:.6f} + {cy:.6f}i &nbsp;|&nbsp; **Zoom:** {zoom_level:,.2f}x")
 
-    # 4. Computation and Rendering
+    # Computing and Instant Rendering
     try:
         t0 = time.perf_counter()
-        escape_times, escaped, unresolved, _ = cached_compute(
+        
+        # 1. Compute Numerical Arrays (Cached operation)
+        escape_times, smooth_times, escaped, unresolved, _ = cached_compute(
             vp.re_min, vp.re_max, vp.im_min, vp.im_max, width, height, max_iter, 2.0
         )
+        t_comp = time.perf_counter()
         
-        fig = create_mandelbrot_figure(escape_times, unresolved, vp.re_min, vp.re_max, vp.im_min, vp.im_max, cmap)
+        # 2. Render Figure (Instant state application)
+        fig = create_mandelbrot_figure(
+            escape_times, smooth_times, unresolved, 
+            vp.re_min, vp.re_max, vp.im_min, vp.im_max, 
+            mode, cmap, interior_color
+        )
         png_buf = figure_to_png_buffer(fig)
         t_total = time.perf_counter() - t0
         
-        st.success(f"Rendered view in {t_total:.3f} seconds.")
+        st.success(f"Compute: {(t_comp-t0):.3f}s | Total Render time: {t_total:.3f}s. Color updates map instantly.")
         st.pyplot(fig)
         
         st.download_button(
-            "📥 Download Current View (PNG)", 
+            f"📥 Download {mode} View (PNG)", 
             data=png_buf, 
-            file_name=f"mandelbrot_{zoom_level:.1f}x.png", 
+            file_name=f"mandelbrot_{mode}_{zoom_level:.1f}x.png", 
             mime="image/png"
         )
         plt.close(fig)
     except Exception as e:
-        st.error(f"Computation failed: {e}")
+        st.error(f"Execution failed: {e}")
 
 if __name__ == "__main__":
     main()
