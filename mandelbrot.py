@@ -1,6 +1,7 @@
 """
 Mandelbrot Computation Engine.
-Handles the mathematical generation of the Mandelbrot Set using an escape-time algorithm.
+Handles the mathematical generation of the Mandelbrot Set using escape-time algorithms
+and smooth continuous coloring approximation.
 """
 import math
 import numpy as np
@@ -15,7 +16,7 @@ def compute_mandelbrot(
     height: int = 800,
     max_iter: int = 100,
     escape_radius: float = 2.0
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Computes the Mandelbrot Set using an optimized escape-time algorithm.
 
@@ -24,14 +25,15 @@ def compute_mandelbrot(
         im_min, im_max: Boundaries of the imaginary axis.
         width: Pixel width of the output image.
         height: Pixel height of the output image.
-        max_iter: Maximum number of iterations before assuming a point is unresolved.
-        escape_radius: Radius beyond which an orbit is guaranteed to escape.
+        max_iter: Maximum iterations before classifying as unresolved.
+        escape_radius: Radius threshold for escape (must be >= 2.0 for standard algorithms).
 
     Returns:
         escape_times (np.ndarray): 2D integer array recording the iteration at which a point escaped.
+        smooth_escape_times (np.ndarray): 2D float array containing continuous escape approximations.
         escaped_mask (np.ndarray): 2D boolean array where True means the point escaped.
         unresolved_mask (np.ndarray): 2D boolean array where True means the point did not escape.
-        c_matrix (np.ndarray): 2D complex array of the coordinate grid.
+        c_matrix (np.ndarray): 2D complex coordinate grid.
     """
     # 1. Parameter Validation
     for v in (re_min, re_max, im_min, im_max):
@@ -46,48 +48,50 @@ def compute_mandelbrot(
         raise ValueError("Grid width and height must be positive integers")
     if max_iter <= 0:
         raise ValueError("max_iter must be a positive integer")
-    if escape_radius <= 0:
-        raise ValueError("escape_radius must be positive")
+    if escape_radius < 2.0:
+        raise ValueError("escape_radius must be >= 2.0 for mathematical stability.")
 
     # 2. Coordinate Grid Generation
     x = np.linspace(re_min, re_max, width)
     y = np.linspace(im_min, im_max, height)
     X, Y = np.meshgrid(x, y)
-    
-    # Complex coordinate matrix c = x + iy
     c_matrix = X + 1j * Y
 
     # 3. Initialization
     z = np.zeros_like(c_matrix, dtype=np.complex128)
     escape_times = np.zeros(c_matrix.shape, dtype=np.int32)
+    smooth_escape_times = np.zeros(c_matrix.shape, dtype=np.float64)
     
-    # Active mask tracks points that have not yet escaped
     active = np.ones(c_matrix.shape, dtype=bool)
 
     # 4. Escape-time Iteration
     for i in range(max_iter):
         if not np.any(active):
-            break  # Stop early if all points have escaped
+            break
 
-        # z_(n+1) = z_n^2 + c (Computed only for active points)
         z[active] = z[active]**2 + c_matrix[active]
 
-        # Detect which active points escaped in this iteration
-        # |z_n| > escape_radius
+        # Detect active points that exceeded the escape radius
         escaped_now = np.abs(z[active]) > escape_radius
         
-        # Map back to the full grid layout
-        escaped_full = np.zeros_like(active)
-        escaped_full[active] = escaped_now
+        if np.any(escaped_now):
+            escaped_full = np.zeros_like(active)
+            escaped_full[active] = escaped_now
 
-        # Record escape iteration (1-indexed for clarity)
-        escape_times[escaped_full] = i + 1
+            # Record standard integer iteration
+            escape_times[escaped_full] = i + 1
 
-        # Remove escaped points from the active mask
-        active[escaped_full] = False
+            # Record continuous/smooth coloring approximation:
+            # mu = n + 1 - log2(ln(|z|))
+            # Guaranteed safe since |z| > escape_radius >= 2.0, so ln(|z|) > ln(2) > 0.
+            z_esc = np.abs(z[escaped_full])
+            log_z = np.log(z_esc)
+            smooth_escape_times[escaped_full] = (i + 1) - np.log2(log_z)
+
+            active[escaped_full] = False
 
     # 5. Classify final states
     unresolved_mask = active.copy()
     escaped_mask = ~active
 
-    return escape_times, escaped_mask, unresolved_mask, c_matrix
+    return escape_times, smooth_escape_times, escaped_mask, unresolved_mask, c_matrix
