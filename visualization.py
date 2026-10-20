@@ -4,7 +4,6 @@ Scientific Visualization module for the Mandelbrot Set.
 import io
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 
 def create_mandelbrot_figure(
     escape_times: np.ndarray,
