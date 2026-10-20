@@ -1,7 +1,8 @@
 import pytest
 import numpy as np
 import matplotlib.pyplot as plt
-from visualization import create_mandelbrot_figure, figure_to_png_buffer
+from PIL import Image
+from visualization import colorize_fractal, downsample_image, create_mandelbrot_figure, figure_to_png_buffer
 
 @pytest.fixture
 def dummy_data():
@@ -11,17 +12,37 @@ def dummy_data():
     return e_times, s_times, unresolved_mask
 
 @pytest.mark.parametrize("mode", ["Classic", "Smooth", "Binary", "Grayscale", "Logarithmic"])
-def test_figure_modes(dummy_data, mode):
-    """Tests all visualization modes compile successfully without throwing Matplotlib errors."""
+def test_colorize_fractal_pipeline(dummy_data, mode):
+    """Tests the NumPy-to-Pillow color mapping architecture."""
     e_times, s_times, unresolved = dummy_data
-    fig = create_mandelbrot_figure(
-        e_times, s_times, unresolved,
-        re_min=-1, re_max=1, im_min=-1, im_max=1,
-        mode=mode, cmap_name='viridis', interior_color='black'
-    )
     
-    assert isinstance(fig, plt.Figure)
+    img, sm = colorize_fractal(e_times, s_times, unresolved, mode, 'viridis', 'black')
     
-    buf = figure_to_png_buffer(fig)
+    assert isinstance(img, Image.Image)
+    assert img.width == 2
+    assert img.height == 2
+    assert img.mode == 'RGB'
+
+def test_downsample_image():
+    """Ensures supersampling filters reduce pixel grids correctly."""
+    arr = np.zeros((100, 100, 3), dtype=np.uint8)
+    img = Image.fromarray(arr)
+    
+    # Simulate a 2x downsample back to 50x50
+    downsampled = downsample_image(img, 50, 50, 'LANCZOS')
+    
+    assert downsampled.width == 50
+    assert downsampled.height == 50
+
+def test_figure_metadata_export(dummy_data):
+    """Tests embedding PNG metadata."""
+    e_times, s_times, unresolved = dummy_data
+    img, sm = colorize_fractal(e_times, s_times, unresolved, 'Smooth', 'viridis', 'black')
+    
+    fig = create_mandelbrot_figure(img, sm, -1, 1, -1, 1, 'Smooth')
+    
+    metadata = {"TestKey": "TestValue"}
+    buf = figure_to_png_buffer(fig, metadata)
+    
     assert buf.read().startswith(b'\x89PNG')
     plt.close(fig)
