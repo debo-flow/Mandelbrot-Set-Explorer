@@ -18,15 +18,14 @@ def colorize_fractal(
     cmap_name: str,
     interior_color: str
 ) -> Tuple[Image.Image, cm.ScalarMappable]:
-    """Applies colormaps at the raw mathematical resolution to produce a PIL Image."""
+    """Applies colormaps at the raw float64 resolution to produce a PIL Image."""
     
-    # 1. Mode Transformation
     if mode == 'Classic':
-        data = escape_times.astype(float)
+        data = escape_times.astype(np.float64)
     elif mode == 'Logarithmic':
         data = np.log1p(np.maximum(0, smooth_escape_times))
     elif mode == 'Binary':
-        data = np.ones_like(escape_times, dtype=float)
+        data = np.ones_like(escape_times, dtype=np.float64)
         cmap_name = 'gray'
     elif mode == 'Grayscale':
         data = smooth_escape_times
@@ -34,7 +33,6 @@ def colorize_fractal(
     else: # Smooth
         data = smooth_escape_times
         
-    # 2. Normalize and Setup Colormap
     if mode == 'Binary':
         cmap = mcolors.ListedColormap(['white'])
         norm = mcolors.Normalize(vmin=0, vmax=1)
@@ -51,27 +49,22 @@ def colorize_fractal(
             norm = mcolors.Normalize(vmin=0, vmax=1)
 
     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-    
-    # 3. Apply Colors (Yields an RGBA float array [0.0 - 1.0])
     rgba = sm.to_rgba(data)
     
-    # 4. Handle Unresolved Interior
     try:
         ic = mcolors.to_rgba(interior_color)
     except ValueError:
         ic = (0.0, 0.0, 0.0, 1.0)
     rgba[unresolved_mask] = ic
     
-    # 5. Convert to uint8 RGB Image
     rgb8 = (rgba[:, :, :3] * 255).astype(np.uint8)
     img = Image.fromarray(rgb8)
     
     return img, sm
 
 def downsample_image(img: Image.Image, target_width: int, target_height: int, filter_name: str) -> Image.Image:
-    """Downsamples a high-resolution PIL Image using scientific anti-aliasing filters."""
     if img.width == target_width and img.height == target_height:
-        return img # No resampling needed if factor is 1x
+        return img 
         
     filters = {
         'LANCZOS': Image.Resampling.LANCZOS,
@@ -92,18 +85,15 @@ def create_mandelbrot_figure(
     im_max: float,
     mode: str
 ) -> plt.Figure:
-    """Wraps the resampled Pillow image into a scientific Matplotlib figure."""
     aspect_ratio = img.height / img.width
     base_width = 10.0
     fig, ax = plt.subplots(figsize=(base_width, base_width * aspect_ratio))
     
-    # Since y arrays go from min to max, row 0 is bottom. PIL displays row 0 as top.
-    # extent=(left, right, bottom, top) combined with origin='lower' inherently maps correctly.
     ax.imshow(
         np.array(img),
         origin='lower',
         extent=(re_min, re_max, im_min, im_max),
-        interpolation='none' # Pre-interpolated natively by Pillow!
+        interpolation='none'
     )
     
     ax.set_xlabel("Real Axis ($\Re$)")
@@ -118,7 +108,6 @@ def create_mandelbrot_figure(
     return fig
 
 def figure_to_png_buffer(fig: plt.Figure, metadata: dict = None) -> io.BytesIO:
-    """Safely exports a figure to memory, optionally injecting PNG Metadata."""
     buf = io.BytesIO()
     fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
     buf.seek(0)
