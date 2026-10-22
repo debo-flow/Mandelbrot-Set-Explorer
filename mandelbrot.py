@@ -1,7 +1,7 @@
 """
 Mandelbrot Computation Engine.
 Handles the mathematical generation of the Mandelbrot Set using escape-time algorithms
-and smooth continuous coloring approximation.
+and smooth continuous coloring approximation under strict float64 constraints.
 """
 import math
 import numpy as np
@@ -21,7 +21,7 @@ def compute_mandelbrot(
     escape_radius: float = 2.0
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Computes the Mandelbrot Set using an optimized escape-time algorithm.
+    Computes the Mandelbrot Set using an optimized float64 escape-time algorithm.
 
     Args:
         re_min, re_max: Boundaries of the real axis.
@@ -29,13 +29,13 @@ def compute_mandelbrot(
         width: Pixel width of the output internal image grid.
         height: Pixel height of the output internal image grid.
         max_iter: Maximum iterations before classifying as unresolved.
-        escape_radius: Radius threshold for escape (must be >= 2.0 for standard algorithms).
+        escape_radius: Radius threshold for escape (must be >= 2.0).
 
     Returns:
-        escape_times (np.ndarray): 2D integer array recording the iteration at which a point escaped.
-        smooth_escape_times (np.ndarray): 2D float array containing continuous escape approximations.
-        escaped_mask (np.ndarray): 2D boolean array where True means the point escaped.
-        unresolved_mask (np.ndarray): 2D boolean array where True means the point did not escape.
+        escape_times (np.ndarray): 2D integer array (escaped iteration).
+        smooth_escape_times (np.ndarray): 2D float array (continuous escape).
+        escaped_mask (np.ndarray): 2D boolean array (True = escaped).
+        unresolved_mask (np.ndarray): 2D boolean array (True = unresolved).
         c_matrix (np.ndarray): 2D complex coordinate grid.
     """
     # 1. Parameter Validation
@@ -54,13 +54,13 @@ def compute_mandelbrot(
     if escape_radius < 2.0:
         raise ValueError("escape_radius must be >= 2.0 for mathematical stability.")
         
-    # Safeguard against out-of-memory errors on massive supersamples
     if width * height > MAX_SAFE_PIXELS:
         raise ValueError(f"Safety limit exceeded: Requesting {width * height:,} pixels. Max allowed is {MAX_SAFE_PIXELS:,}.")
 
-    # 2. Coordinate Grid Generation
-    x = np.linspace(re_min, re_max, width)
-    y = np.linspace(im_min, im_max, height)
+    # 2. Coordinate Grid Generation (Strictly IEEE-754 float64)
+    # endpoint=True ensures the final pixel rests exactly on re_max/im_max
+    x = np.linspace(re_min, re_max, width, dtype=np.float64, endpoint=True)
+    y = np.linspace(im_min, im_max, height, dtype=np.float64, endpoint=True)
     X, Y = np.meshgrid(x, y)
     c_matrix = X + 1j * Y
 
