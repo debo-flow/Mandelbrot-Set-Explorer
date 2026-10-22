@@ -1,6 +1,6 @@
 """
 Complex Plane Navigation Module.
-Handles Viewport mathematics, aspect ratio enforcement, and view history.
+Handles Viewport mathematics, aspect ratio enforcement, and strict float precision validation.
 """
 import math
 from dataclasses import dataclass
@@ -40,7 +40,7 @@ class Viewport:
     def enforce_aspect_ratio(self, px_width: int, px_height: int) -> 'Viewport':
         """
         Adjusts the vertical boundaries to match the exact pixel aspect ratio,
-        preventing image stretching.
+        preventing image stretching while preserving the intended center coordinate.
         """
         if px_width <= 0 or px_height <= 0:
             raise ValueError("Pixel dimensions must be positive.")
@@ -48,7 +48,6 @@ class Viewport:
         target_ratio = px_height / px_width
         cx, cy = self.center
         
-        # We hold the real-axis width constant and adjust the imaginary height
         new_width = self.width
         new_height = new_width * target_ratio
         
@@ -75,9 +74,6 @@ class Viewport:
         )
 
     def pan(self, dx_frac: float, dy_frac: float) -> 'Viewport':
-        """
-        Pans the viewport by a fraction of its current dimensions.
-        """
         shift_x = self.width * dx_frac
         shift_y = self.height * dy_frac
         
@@ -96,7 +92,6 @@ class HistoryManager:
         self.limit = limit
 
     def push(self, viewport: Viewport):
-        # Truncate forward history if we are pushing a new state after undoing
         if self.current_index < len(self.history) - 1:
             self.history = self.history[:self.current_index + 1]
             
