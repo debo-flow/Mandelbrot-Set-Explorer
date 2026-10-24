@@ -1,13 +1,13 @@
 """
 Mandelbrot Computation Engine.
-Handles the mathematical generation of the Mandelbrot Set using escape-time algorithms
-and smooth continuous coloring approximation under strict float64 constraints.
+Handles the mathematical generation of the Mandelbrot Set using escape-time algorithms,
+smooth continuous coloring, and geometric orbit-trap minimum distance tracking.
 """
 import math
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Dict, Any
 
-# Memory Safeguard: Prevent arrays larger than ~64 million pixels (~1GB footprint total)
+# Memory Safeguard: Prevent arrays larger than ~64 million pixels
 MAX_SAFE_PIXELS = 64_000_000
 
 def compute_mandelbrot(
@@ -18,22 +18,17 @@ def compute_mandelbrot(
     width: int = 800,
     height: int = 800,
     max_iter: int = 100,
-    escape_radius: float = 2.0
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    escape_radius: float = 2.0,
+    trap_type: str = "None",
+    trap_params: Dict[str, Any] = None
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Computes the Mandelbrot Set using an optimized float64 escape-time algorithm.
-
-    Args:
-        re_min, re_max: Boundaries of the real axis.
-        im_min, im_max: Boundaries of the imaginary axis.
-        width: Pixel width of the output internal image grid.
-        height: Pixel height of the output internal image grid.
-        max_iter: Maximum iterations before classifying as unresolved.
-        escape_radius: Radius threshold for escape (must be >= 2.0).
+    Computes the Mandelbrot Set and tracks orbit traps.
 
     Returns:
         escape_times (np.ndarray): 2D integer array (escaped iteration).
         smooth_escape_times (np.ndarray): 2D float array (continuous escape).
+        trap_distances (np.ndarray): 2D float array (min distance to orbit trap).
         escaped_mask (np.ndarray): 2D boolean array (True = escaped).
         unresolved_mask (np.ndarray): 2D boolean array (True = unresolved).
         c_matrix (np.ndarray): 2D complex coordinate grid.
@@ -57,8 +52,9 @@ def compute_mandelbrot(
     if width * height > MAX_SAFE_PIXELS:
         raise ValueError(f"Safety limit exceeded: Requesting {width * height:,} pixels. Max allowed is {MAX_SAFE_PIXELS:,}.")
 
-    # 2. Coordinate Grid Generation (Strictly IEEE-754 float64)
-    # endpoint=True ensures the final pixel rests exactly on re_max/im_max
+    trap_params = trap_params or {}
+
+    # 2. Coordinate Grid Generation
     x = np.linspace(re_min, re_max, width, dtype=np.float64, endpoint=True)
     y = np.linspace(im_min, im_max, height, dtype=np.float64, endpoint=True)
     X, Y = np.meshgrid(x, y)
@@ -69,15 +65,45 @@ def compute_mandelbrot(
     escape_times = np.zeros(c_matrix.shape, dtype=np.int32)
     smooth_escape_times = np.zeros(c_matrix.shape, dtype=np.float64)
     
+    if trap_type != "None":
+        trap_distances = np.full(c_matrix.shape, np.inf, dtype=np.float64)
+    else:
+        trap_distances = np.zeros(c_matrix.shape, dtype=np.float64)
+    
     active = np.ones(c_matrix.shape, dtype=bool)
 
-    # 4. Escape-time Iteration
+    # 4. Escape-time & Orbit-Trap Iteration
     for i in range(max_iter):
         if not np.any(active):
             break
 
-        z[active] = z[active]**2 + c_matrix[active]
+        # Calculate Orbit Trap Distance before squaring
+        if trap_type != "None":
+            if trap_type == "Point":
+                p = trap_params.get('p', 0j)
+                d = np.abs(z[active] - p)
+            elif trap_type == "Circle":
+                p = trap_params.get('p', 0j)
+                r = max(trap_params.get('r', 1.0), 1e-9)
+                d = np.abs(np.abs(z[active] - p) - r)
+            elif trap_type == "Line":
+                A = trap_params.get('A', 1.0)
+                B = trap_params.get('B', 0.0)
+                C = trap_params.get('C', 0.0)
+                den = math.hypot(A, B)
+                if den == 0: den = 1.0
+                d = np.abs(A * z[active].real + B * z[active].imag + C) / den
+            elif trap_type == "Cross":
+                cx = trap_params.get('x', 0.0)
+                cy = trap_params.get('y', 0.0)
+                d = np.minimum(np.abs(z[active].real - cx), np.abs(z[active].imag - cy))
+            else:
+                d = np.inf
+                
+            trap_distances[active] = np.minimum(trap_distances[active], d)
 
+        # Iterate Z
+        z[active] = z[active]**2 + c_matrix[active]
         escaped_now = np.abs(z[active]) > escape_radius
         
         if np.any(escaped_now):
@@ -96,4 +122,4 @@ def compute_mandelbrot(
     unresolved_mask = active.copy()
     escaped_mask = ~active
 
-    return escape_times, smooth_escape_times, escaped_mask, unresolved_mask, c_matrix
+    return escape_times, smooth_escape_times, trap_distances, escaped_mask, unresolved_mask, c_matrix
