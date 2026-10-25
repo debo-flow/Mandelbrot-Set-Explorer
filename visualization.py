@@ -1,6 +1,6 @@
 """
 Scientific Visualization module for the Mandelbrot Set.
-Handles mathematical color mapping, Pillow-based supersampling filters, and rendering.
+Handles mathematical color mapping, Orbit-Trap blends, and Pillow supersampling filters.
 """
 import io
 import numpy as np
@@ -13,6 +13,7 @@ from typing import Tuple
 def colorize_fractal(
     escape_times: np.ndarray,
     smooth_escape_times: np.ndarray,
+    trap_distances: np.ndarray,
     unresolved_mask: np.ndarray,
     mode: str,
     cmap_name: str,
@@ -20,10 +21,15 @@ def colorize_fractal(
 ) -> Tuple[Image.Image, cm.ScalarMappable]:
     """Applies colormaps at the raw float64 resolution to produce a PIL Image."""
     
+    # 1. Mode Transformation
     if mode == 'Classic':
         data = escape_times.astype(np.float64)
     elif mode == 'Logarithmic':
         data = np.log1p(np.maximum(0, smooth_escape_times))
+    elif mode == 'Orbit Trap':
+        data = trap_distances
+    elif mode == 'Orbit Trap Blend':
+        data = smooth_escape_times + np.log1p(trap_distances)
     elif mode == 'Binary':
         data = np.ones_like(escape_times, dtype=np.float64)
         cmap_name = 'gray'
@@ -33,6 +39,7 @@ def colorize_fractal(
     else: # Smooth
         data = smooth_escape_times
         
+    # 2. Normalize and Setup Colormap
     if mode == 'Binary':
         cmap = mcolors.ListedColormap(['white'])
         norm = mcolors.Normalize(vmin=0, vmax=1)
@@ -42,7 +49,12 @@ def colorize_fractal(
         except ValueError:
             cmap = plt.get_cmap('magma').copy()
             
-        valid_data = data[~unresolved_mask]
+        # For Orbit Traps, unresolved points technically possess valid geometric distances!
+        if mode in ['Orbit Trap', 'Orbit Trap Blend']:
+            valid_data = data[~np.isinf(data)]
+        else:
+            valid_data = data[~unresolved_mask]
+            
         if len(valid_data) > 0:
             norm = mcolors.Normalize(vmin=valid_data.min(), vmax=valid_data.max())
         else:
@@ -51,11 +63,14 @@ def colorize_fractal(
     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
     rgba = sm.to_rgba(data)
     
-    try:
-        ic = mcolors.to_rgba(interior_color)
-    except ValueError:
-        ic = (0.0, 0.0, 0.0, 1.0)
-    rgba[unresolved_mask] = ic
+    # 3. Handle Unresolved Interior
+    # In purely geometric Orbit Trap modes, the interior holds structural value.
+    if mode not in ['Orbit Trap', 'Orbit Trap Blend']:
+        try:
+            ic = mcolors.to_rgba(interior_color)
+        except ValueError:
+            ic = (0.0, 0.0, 0.0, 1.0)
+        rgba[unresolved_mask] = ic
     
     rgb8 = (rgba[:, :, :3] * 255).astype(np.uint8)
     img = Image.fromarray(rgb8)
@@ -102,7 +117,7 @@ def create_mandelbrot_figure(
     
     if mode != 'Binary':
         cbar = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label("Escape Metric")
+        cbar.set_label("Diagnostic Metric")
     
     fig.tight_layout()
     return fig
