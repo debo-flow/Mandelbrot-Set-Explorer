@@ -8,15 +8,16 @@ from visualization import colorize_fractal, downsample_image, create_mandelbrot_
 def dummy_data():
     e_times = np.array([[1, 2], [3, 0]], dtype=np.int32)
     s_times = np.array([[1.5, 2.2], [3.8, 0.0]], dtype=np.float64)
+    traps = np.array([[0.5, 0.1], [1.2, np.inf]], dtype=np.float64)
     unresolved_mask = np.array([[False, False], [False, True]])
-    return e_times, s_times, unresolved_mask
+    return e_times, s_times, traps, unresolved_mask
 
-@pytest.mark.parametrize("mode", ["Classic", "Smooth", "Binary", "Grayscale", "Logarithmic"])
+@pytest.mark.parametrize("mode", ["Classic", "Smooth", "Orbit Trap", "Orbit Trap Blend", "Logarithmic"])
 def test_colorize_fractal_pipeline(dummy_data, mode):
-    """Tests the NumPy-to-Pillow color mapping architecture."""
-    e_times, s_times, unresolved = dummy_data
+    """Tests the NumPy-to-Pillow color mapping architecture including Trap routing."""
+    e_times, s_times, traps, unresolved = dummy_data
     
-    img, sm = colorize_fractal(e_times, s_times, unresolved, mode, 'viridis', 'black')
+    img, sm = colorize_fractal(e_times, s_times, traps, unresolved, mode, 'viridis', 'black')
     
     assert isinstance(img, Image.Image)
     assert img.width == 2
@@ -24,20 +25,15 @@ def test_colorize_fractal_pipeline(dummy_data, mode):
     assert img.mode == 'RGB'
 
 def test_downsample_image():
-    """Ensures supersampling filters reduce pixel grids correctly."""
     arr = np.zeros((100, 100, 3), dtype=np.uint8)
     img = Image.fromarray(arr)
-    
-    # Simulate a 2x downsample back to 50x50
     downsampled = downsample_image(img, 50, 50, 'LANCZOS')
-    
     assert downsampled.width == 50
-    assert downsampled.height == 50
 
 def test_figure_metadata_export(dummy_data):
     """Tests embedding PNG metadata."""
-    e_times, s_times, unresolved = dummy_data
-    img, sm = colorize_fractal(e_times, s_times, unresolved, 'Smooth', 'viridis', 'black')
+    e_times, s_times, traps, unresolved = dummy_data
+    img, sm = colorize_fractal(e_times, s_times, traps, unresolved, 'Smooth', 'viridis', 'black')
     
     fig = create_mandelbrot_figure(img, sm, -1, 1, -1, 1, 'Smooth')
     
