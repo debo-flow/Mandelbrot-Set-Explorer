@@ -10,9 +10,6 @@ def test_precision_normal_view():
 
 def test_precision_warning_view():
     """Deep zoom reaching the 100x spacing boundary triggers a Warning."""
-    # A center at re=-0.75 has spacing around 1.1e-16
-    # Width = 1e-13 across 800 pixels -> step is ~1.2e-16
-    # This is extremely close to the spacing limit, triggering a warning.
     cx, cy = -0.75, 0.1
     span = 1e-13
     diag = evaluate_precision(
@@ -23,9 +20,8 @@ def test_precision_warning_view():
 
 def test_precision_limitation_reached():
     """Extreme zoom where pixels mathematically map to identical float coordinates."""
-    # Step size is smaller than float resolution
     cx, cy = -0.75, 0.1
-    span = 1e-16  # Way below float64 resolution for -0.75
+    span = 1e-16 
     diag = evaluate_precision(
         cx - span/2, cx + span/2, cy - span/2, cy + span/2, 800, 800
     )
@@ -34,14 +30,13 @@ def test_precision_limitation_reached():
 
 def test_precision_zero_center():
     """Zooming precisely at 0.0 has a much smaller spacing constraint."""
-    # np.spacing(0) is 5e-324, so zooming at the origin is exceptionally deep.
     span = 1e-100
     diag = evaluate_precision(-span, span, -span, span, 800, 800)
     assert diag.state == PrecisionState.NORMAL
 
 def test_invalid_dimensions():
     with pytest.raises(ValueError):
-        evaluate_precision(-1, 1, -1, 1, 1, 800)  # Width 1 causes div by zero
+        evaluate_precision(-1, 1, -1, 1, 1, 800)
 
 def test_nan_inputs():
     with pytest.raises(ValueError):
