@@ -6,13 +6,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Dict, Any
 
-def compute_single_orbit(c: complex, max_iter: int, escape_radius: float = 2.0) -> List[Dict[str, Any]]:
-    """Calculates the specific finite orbit of a single complex parameter c."""
+def compute_single_orbit(c: complex, z0: complex = 0j, max_iter: int = 50, escape_radius: float = 2.0) -> List[Dict[str, Any]]:
+    """Calculates the specific finite orbit of a complex parameter c with initial condition z0."""
     if max_iter <= 0:
         raise ValueError("max_iter must be a positive integer.")
         
     orbit = []
-    z = 0j
+    z = z0
     
     for i in range(max_iter + 1):
         mag = abs(z)
@@ -33,7 +33,7 @@ def compute_single_orbit(c: complex, max_iter: int, escape_radius: float = 2.0) 
         
     return orbit
 
-def plot_single_orbit(orbit_data: List[Dict[str, Any]], c: complex) -> plt.Figure:
+def plot_single_orbit(orbit_data: List[Dict[str, Any]], c: complex, z0: complex = 0j) -> plt.Figure:
     """Renders a mathematical 2D plot of the orbit sequence."""
     fig, ax = plt.subplots(figsize=(6, 6))
     
@@ -53,14 +53,14 @@ def plot_single_orbit(orbit_data: List[Dict[str, Any]], c: complex) -> plt.Figur
         
     ax.set_xlabel("Real Axis")
     ax.set_ylabel("Imaginary Axis")
-    ax.set_title(f"Orbit Sequence for c = {c.real} + {c.imag}j")
+    ax.set_title(f"Orbit Sequence\nc = {c.real} + {c.imag}j | z_0 = {z0.real} + {z0.imag}j")
     
     # Circle representing the escape boundary
     circle = plt.Circle((0, 0), 2.0, color='red', fill=False, linestyle='--', alpha=0.5, label='Escape Radius (2.0)')
     ax.add_patch(circle)
     
     ax.grid(True, linestyle='--', alpha=0.5)
-    ax.legend()
+    ax.legend(loc='upper right')
     fig.tight_layout()
     return fig
 
