@@ -1,20 +1,22 @@
 """
-Streamlit Application UI for the Mandelbrot Set Explorer v6.0.0.
-Integrates Orbit Trap Visualization, Deep Zoom Precision, and Statistical Diagnostics.
+Streamlit Application UI for the Mandelbrot Set Explorer v7.0.0.
+Integrates Julia Set exploration, Dual-Plane Connection mode, and Advanced Statistics.
 """
 import time
 import streamlit as st
 import matplotlib.pyplot as plt
 
 from mandelbrot import compute_mandelbrot, MAX_SAFE_PIXELS
-from visualization import colorize_fractal, downsample_image, create_mandelbrot_figure, figure_to_png_buffer
+from julia import compute_julia
+from visualization import colorize_fractal, downsample_image, create_fractal_figure, figure_to_png_buffer
 from navigation import Viewport, HistoryManager
 from precision import evaluate_precision, PrecisionState
 from orbit_analysis import compute_single_orbit, plot_single_orbit, calculate_escape_statistics, orbit_to_csv
 
-st.set_page_config(page_title="Mandelbrot Explorer v6.0", page_icon="🌌", layout="wide")
+st.set_page_config(page_title="Fractal Explorer v7.0", page_icon="🌌", layout="wide")
 
 DEFAULT_VIEW = Viewport(-2.5, 1.0, -1.5, 1.5)
+JULIA_DEFAULT = Viewport(-2.0, 2.0, -2.0, 2.0)
 
 if 'history' not in st.session_state:
     st.session_state.history = HistoryManager()
@@ -22,12 +24,16 @@ if 'history' not in st.session_state:
 if 'pan_step' not in st.session_state:
     st.session_state.pan_step = 0.20
 
-# Tuples dict hashes effortlessly for Streamlit cache
+# Cached Math Engines
 @st.cache_data(show_spinner=False)
-def cached_compute(re_min, re_max, im_min, im_max, w, h, iters, radius, trap_type, trap_params):
-    # Reconvert tupled parameters back to dict for the computation engine
+def cached_mandelbrot(re_min, re_max, im_min, im_max, w, h, iters, radius, trap_type, trap_params):
     t_params = dict(trap_params) if trap_params else {}
     return compute_mandelbrot(re_min, re_max, im_min, im_max, w, h, iters, radius, trap_type, t_params)
+
+@st.cache_data(show_spinner=False)
+def cached_julia(re_min, re_max, im_min, im_max, w, h, iters, radius, trap_type, trap_params, c):
+    t_params = dict(trap_params) if trap_params else {}
+    return compute_julia(re_min, re_max, im_min, im_max, w, h, iters, radius, trap_type, t_params, c)
 
 def navigate(action: str, **kwargs):
     current_vp = st.session_state.history.current
@@ -61,11 +67,49 @@ def navigate(action: str, **kwargs):
     except ValueError as e:
         st.error(f"Navigation Error: {e}")
 
-def main():
-    st.title("Orbit-Trap Dynamics & Advanced Analysis Laboratory")
+def render_fractal_pipeline(engine_func, vp, out_w, out_h, ss_factor, resample_filter, mode, cmap, interior_color, title, marker_c=None):
+    internal_w, internal_h = out_w * ss_factor, out_h * ss_factor
+    t0 = time.perf_counter()
     
-    # 1. Output & Rendering Quality
-    st.sidebar.header("1. Pipeline Configuration")
+    # Engine execution handles tuple args from caller
+    arrays = engine_func(vp.re_min, vp.re_max, vp.im_min, vp.im_max, internal_w, internal_h)
+    escape_times, smooth_times, trap_distances, escaped, unresolved, _ = arrays
+    
+    raw_img, sm = colorize_fractal(escape_times, smooth_times, trap_distances, unresolved, mode, cmap, interior_color)
+    final_img = downsample_image(raw_img, out_w, out_h, resample_filter)
+    fig = create_fractal_figure(final_img, sm, vp.re_min, vp.re_max, vp.im_min, vp.im_max, mode, title, marker_c)
+    
+    t_total = time.perf_counter() - t0
+    return fig, arrays, t_total
+
+def main():
+    st.title("Mandelbrot–Julia Connection Laboratory")
+    
+    st.sidebar.header("1. Fractal Domain")
+    fractal_type = st.sidebar.radio("Active Explorer", ["Mandelbrot Explorer", "Julia Set Explorer", "Dual Connection Mode"])
+    
+    c_param = 0j
+    if fractal_type in ["Julia Set Explorer", "Dual Connection Mode"]:
+        st.sidebar.header("2. Julia Parameter (c)")
+        preset = st.sidebar.selectbox("Presets", [
+            "Custom", "Circle (c=0)", "Basilica (c=-1)", 
+            "Rabbit (c=-0.123+0.745j)", "San Marco (c=-0.75)", 
+            "Dendrite (c=1i)", "c = 0.285+0.01j"
+        ])
+        
+        presets_map = {
+            "Circle (c=0)": 0j, "Basilica (c=-1)": -1+0j, 
+            "Rabbit (c=-0.123+0.745j)": -0.123+0.745j,
+            "San Marco (c=-0.75)": -0.75+0j, "Dendrite (c=1i)": 1j,
+            "c = 0.285+0.01j": 0.285+0.01j
+        }
+        c_default = presets_map.get(preset, 0j)
+        
+        c_re = st.sidebar.number_input("Real Part (a)", value=c_default.real, step=0.01, format="%.4f")
+        c_im = st.sidebar.number_input("Imag Part (b)", value=c_default.imag, step=0.01, format="%.4f")
+        c_param = complex(c_re, c_im)
+
+    st.sidebar.header("3. Rendering Pipeline")
     workflow = st.sidebar.radio("Mode", ["Interactive Preview", "Final Render"])
     
     if workflow == "Interactive Preview":
@@ -80,8 +124,7 @@ def main():
         resample_filter = st.sidebar.selectbox("Downsampling Filter", ["LANCZOS", "BICUBIC", "BILINEAR", "BOX"])
         max_iter = st.sidebar.number_input("Max Iterations", 10, 5000, 250, step=10)
 
-    # 2. Geometric Orbit Traps
-    st.sidebar.header("2. Orbit Trap Geometry")
+    st.sidebar.header("4. Orbit Trap Geometry")
     trap_type = st.sidebar.selectbox("Trap Type", ["None", "Point", "Circle", "Line", "Cross"])
     trap_params = {}
     if trap_type == "Point":
@@ -90,28 +133,19 @@ def main():
         trap_params['p'] = complex(st.sidebar.number_input("Center Re", 0.0), st.sidebar.number_input("Center Im", 0.0))
         trap_params['r'] = st.sidebar.number_input("Radius", 1.0, min_value=0.001)
     elif trap_type == "Line":
-        trap_params['A'] = st.sidebar.number_input("Coefficient A", 1.0)
-        trap_params['B'] = st.sidebar.number_input("Coefficient B", 0.0)
-        trap_params['C'] = st.sidebar.number_input("Constant C", 0.0)
+        trap_params['A'], trap_params['B'], trap_params['C'] = st.sidebar.number_input("A", 1.0), st.sidebar.number_input("B", 0.0), st.sidebar.number_input("C", 0.0)
     elif trap_type == "Cross":
-        trap_params['x'] = st.sidebar.number_input("Intersect X", 0.0)
-        trap_params['y'] = st.sidebar.number_input("Intersect Y", 0.0)
+        trap_params['x'], trap_params['y'] = st.sidebar.number_input("Intersect X", 0.0), st.sidebar.number_input("Intersect Y", 0.0)
 
-    # 3. Visualization Settings
-    st.sidebar.header("3. Visualization Styling")
-    mode_list = ["Smooth", "Classic", "Orbit Trap", "Orbit Trap Blend", "Logarithmic", "Binary", "Grayscale"]
-    mode = st.sidebar.selectbox("Visualization Mode", mode_list)
-    cmap = st.sidebar.selectbox("Color Map", ["magma", "inferno", "plasma", "viridis", "turbo", "twilight", "hot", "cool"])
+    st.sidebar.header("5. Visualization Styling")
+    mode = st.sidebar.selectbox("Visualization Mode", ["Smooth", "Classic", "Orbit Trap", "Orbit Trap Blend", "Logarithmic", "Binary", "Grayscale"])
+    cmap = st.sidebar.selectbox("Color Map", ["magma", "inferno", "plasma", "viridis", "turbo", "twilight", "hot", "cool"], disabled=(mode in ["Binary", "Grayscale"]))
     interior_color = st.sidebar.selectbox("Interior Color", ["black", "white", "darkblue"])
 
     raw_vp = st.session_state.history.current
     vp = raw_vp.enforce_aspect_ratio(out_w, out_h)
     cx, cy = vp.center
-    
-    internal_w = out_w * ss_factor
-    internal_h = out_h * ss_factor
-    internal_pixels = internal_w * internal_h
-    zoom_level = DEFAULT_VIEW.width / vp.width
+    internal_pixels = (out_w * ss_factor) * (out_h * ss_factor)
     
     if internal_pixels > MAX_SAFE_PIXELS:
         st.error(f"Memory limit exceeded: {internal_pixels:,} pixels. Max allowed: {MAX_SAFE_PIXELS:,}.")
@@ -120,7 +154,6 @@ def main():
     tab_fractal, tab_stats, tab_orbit = st.tabs(["🌌 Fractal Viewer", "📊 Escape-Time Analysis", "🔍 Single Orbit Inspector"])
 
     with tab_fractal:
-        # TOP MAIN AREA: Precision Diagnostics & Navigation
         nav_col1, nav_col2, nav_col3 = st.columns([1.5, 1, 1])
         with nav_col1:
             st.subheader("Deep Zoom Coordinates")
@@ -151,57 +184,49 @@ def main():
 
         st.markdown("---")
         
-        diagnostics = evaluate_precision(vp.re_min, vp.re_max, vp.im_min, vp.im_max, internal_w, internal_h)
-        metrics_cols = st.columns(4)
-        metrics_cols[0].metric("Relative Zoom", f"{zoom_level:,.1e}x")
-        metrics_cols[1].metric("Real Span", f"{vp.width:.2e}")
-        metrics_cols[2].metric("Pixel Spacing", f"{diagnostics.horizontal_step:.2e}")
-        metrics_cols[3].metric("Float64 Limit", f"{diagnostics.re_spacing:.2e}")
-        
+        diagnostics = evaluate_precision(vp.re_min, vp.re_max, vp.im_min, vp.im_max, out_w*ss_factor, out_h*ss_factor)
         if diagnostics.state != PrecisionState.NORMAL:
             st.warning(f"⚠️ **{diagnostics.state.value}**: {diagnostics.message}")
 
-        # Rendering Pipeline
         try:
-            t0 = time.perf_counter()
-            escape_times, smooth_times, trap_distances, escaped, unresolved, _ = cached_compute(
-                vp.re_min, vp.re_max, vp.im_min, vp.im_max, internal_w, internal_h, max_iter, 2.0,
-                trap_type, tuple(trap_params.items())
-            )
-            t_comp = time.perf_counter()
-            
-            raw_img, sm = colorize_fractal(escape_times, smooth_times, trap_distances, unresolved, mode, cmap, interior_color)
-            t_color = time.perf_counter()
-            
-            final_img = downsample_image(raw_img, out_w, out_h, resample_filter)
-            t_sample = time.perf_counter()
-            
-            fig = create_mandelbrot_figure(final_img, sm, vp.re_min, vp.re_max, vp.im_min, vp.im_max, mode)
-            
-            metadata = {
-                "Project": "Mandelbrot-Set-Explorer v6.0.0",
-                "Mode": mode,
-                "Supersampling": f"{ss_factor}x",
-                "Re_Center": str(cx),
-                "Im_Center": str(cy),
-                "Trap_Type": trap_type,
-                "PrecisionState": diagnostics.state.value
-            }
-            
-            png_buf = figure_to_png_buffer(fig, metadata)
-            t_total = time.perf_counter() - t0
-            
-            st.caption(f"⏱️ **Performance:** Math {t_comp-t0:.2f}s | Map {t_color-t_comp:.2f}s | Filter {t_sample-t_color:.2f}s | Total {t_total:.2f}s")
-            st.pyplot(fig)
-            
-            st.download_button("📥 Download High-Res Render", data=png_buf, file_name=f"mandelbrot_{zoom_level:.1e}x.png", mime="image/png")
-            plt.close(fig)
+            if fractal_type == "Mandelbrot Explorer":
+                engine = lambda rmn, rmx, imn, imx, w, h: cached_mandelbrot(rmn, rmx, imn, imx, w, h, max_iter, 2.0, trap_type, tuple(trap_params.items()))
+                fig, arrays, t_total = render_fractal_pipeline(engine, vp, out_w, out_h, ss_factor, resample_filter, mode, cmap, interior_color, "Mandelbrot Set")
+                st.caption(f"⏱️ Total Rendering Time: {t_total:.2f}s")
+                st.pyplot(fig)
+                png_buf = figure_to_png_buffer(fig)
+                st.download_button("📥 Download Mandelbrot Render", data=png_buf, file_name="mandelbrot.png", mime="image/png")
+
+            elif fractal_type == "Julia Set Explorer":
+                engine = lambda rmn, rmx, imn, imx, w, h: cached_julia(rmn, rmx, imn, imx, w, h, max_iter, 2.0, trap_type, tuple(trap_params.items()), c_param)
+                fig, arrays, t_total = render_fractal_pipeline(engine, vp, out_w, out_h, ss_factor, resample_filter, mode, cmap, interior_color, f"Julia Set (c={c_param})")
+                st.caption(f"⏱️ Total Rendering Time: {t_total:.2f}s")
+                st.pyplot(fig)
+                png_buf = figure_to_png_buffer(fig, {"c": str(c_param)})
+                st.download_button("📥 Download Julia Render", data=png_buf, file_name=f"julia_{c_param}.png", mime="image/png")
+
+            elif fractal_type == "Dual Connection Mode":
+                st.info("💡 **Mathematical Connection:** The Mandelbrot set (left) catalogs all bounded Julia sets. Selecting a parameter `c` inside the Mandelbrot set produces a connected Julia set (right).")
+                col_m, col_j = st.columns(2)
+                
+                with col_m:
+                    engine_m = lambda rmn, rmx, imn, imx, w, h: cached_mandelbrot(rmn, rmx, imn, imx, w, h, max_iter, 2.0, trap_type, tuple(trap_params.items()))
+                    fig_m, arrays, _ = render_fractal_pipeline(engine_m, vp, out_w//2, out_h//2, ss_factor, resample_filter, mode, cmap, interior_color, "Mandelbrot Space", marker_c=c_param)
+                    st.pyplot(fig_m)
+                    
+                with col_j:
+                    j_vp = JULIA_DEFAULT.enforce_aspect_ratio(out_w//2, out_h//2)
+                    engine_j = lambda rmn, rmx, imn, imx, w, h: cached_julia(rmn, rmx, imn, imx, w, h, max_iter, 2.0, trap_type, tuple(trap_params.items()), c_param)
+                    fig_j, arrays_j, _ = render_fractal_pipeline(engine_j, j_vp, out_w//2, out_h//2, ss_factor, resample_filter, mode, cmap, interior_color, f"Julia (c={c_param})")
+                    st.pyplot(fig_j)
+                    
         except Exception as e:
             st.error(f"Execution failed: {e}")
 
     with tab_stats:
         st.subheader("Escape-Time & Render Statistics")
-        if 'escape_times' in locals():
+        if 'arrays' in locals():
+            escape_times, _, _, escaped, unresolved, _ = arrays
             stats = calculate_escape_statistics(escape_times, escaped, unresolved)
             
             scol1, scol2, scol3 = st.columns(3)
@@ -225,34 +250,30 @@ def main():
 
     with tab_orbit:
         st.subheader("Single-Orbit Inspector")
-        st.write("Track the exact orbital path $z_{n+1} = z_n^2 + c$ for a specific complex coordinate.")
+        st.write("Track the exact mathematical path of $z_{n+1} = z_n^2 + c$.")
         
-        ocol1, ocol2, ocol3 = st.columns(3)
+        ocol1, ocol2, ocol3, ocol4 = st.columns(4)
         with ocol1:
-            orb_re = st.number_input("Target Real (Re)", value=0.0, format="%.6f")
+            orb_re = st.number_input("Parameter (c) Real", value=c_param.real if fractal_type != "Mandelbrot Explorer" else 0.0, format="%.6f")
         with ocol2:
-            orb_im = st.number_input("Target Imaginary (Im)", value=0.0, format="%.6f")
+            orb_im = st.number_input("Parameter (c) Imag", value=c_param.imag if fractal_type != "Mandelbrot Explorer" else 0.0, format="%.6f")
         with ocol3:
+            z0_re = st.number_input("Initial z0 Real", value=0.0, format="%.6f")
+            z0_im = st.number_input("Initial z0 Imag", value=0.0, format="%.6f")
+        with ocol4:
             orb_iter = st.number_input("Analysis Iterations", value=50, max_value=1000)
             
         if st.button("🚀 Calculate & Plot Orbit Path"):
             target_c = complex(orb_re, orb_im)
-            orbit_data = compute_single_orbit(target_c, orb_iter, 2.0)
+            target_z0 = complex(z0_re, z0_im)
+            orbit_data = compute_single_orbit(target_c, target_z0, orb_iter, 2.0)
             
-            fig_orb = plot_single_orbit(orbit_data, target_c)
+            fig_orb = plot_single_orbit(orbit_data, target_c, target_z0)
             st.pyplot(fig_orb)
             plt.close(fig_orb)
             
-            st.write("### Orbit Data Table")
-            st.dataframe(orbit_data, use_container_width=True)
-            
             csv_str = orbit_to_csv(orbit_data)
-            st.download_button(
-                "📥 Export Orbit to CSV", 
-                data=csv_str, 
-                file_name=f"orbit_Re{orb_re}_Im{orb_im}.csv", 
-                mime="text/csv"
-            )
+            st.download_button("📥 Export Orbit CSV", data=csv_str, file_name=f"orbit_c{target_c}.csv", mime="text/csv")
 
 if __name__ == "__main__":
     main()
