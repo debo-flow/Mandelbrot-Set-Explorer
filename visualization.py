@@ -1,6 +1,6 @@
 """
-Scientific Visualization module for the Mandelbrot Set.
-Handles mathematical color mapping, Orbit-Trap blends, and Pillow supersampling filters.
+Scientific Visualization module for fractals.
+Handles mathematical color mapping, Orbit-Trap blends, Pillow supersampling filters, and dual-plane markers.
 """
 import io
 import numpy as np
@@ -91,15 +91,18 @@ def downsample_image(img: Image.Image, target_width: int, target_height: int, fi
     resample_filter = filters.get(filter_name.upper(), Image.Resampling.LANCZOS)
     return img.resize((target_width, target_height), resample=resample_filter)
 
-def create_mandelbrot_figure(
+def create_fractal_figure(
     img: Image.Image,
     sm: cm.ScalarMappable,
     re_min: float,
     re_max: float,
     im_min: float,
     im_max: float,
-    mode: str
+    mode: str,
+    title: str = "Mandelbrot Set",
+    marker_c: complex = None
 ) -> plt.Figure:
+    """Wraps the resampled Pillow image into a scientific Matplotlib figure, supporting parameter markers."""
     aspect_ratio = img.height / img.width
     base_width = 10.0
     fig, ax = plt.subplots(figsize=(base_width, base_width * aspect_ratio))
@@ -111,9 +114,13 @@ def create_mandelbrot_figure(
         interpolation='none'
     )
     
+    if marker_c is not None:
+        ax.plot(marker_c.real, marker_c.imag, marker='o', color='red', markersize=8, markeredgecolor='white', label='c Parameter')
+        ax.legend(loc='lower right')
+    
     ax.set_xlabel("Real Axis ($\Re$)")
     ax.set_ylabel("Imaginary Axis ($\Im$)")
-    ax.set_title(f"Mandelbrot Set: {mode} Mode")
+    ax.set_title(f"{title}: {mode} Mode")
     
     if mode != 'Binary':
         cbar = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
